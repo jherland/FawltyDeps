@@ -33,11 +33,17 @@ fawltydeps = "fawltydeps.main:main"
 # These are the main dependencies for fawltydeps at runtime.
 # Do not add anything here that is only needed by CI/tests/linters/developers
 python = "^3.7.2"
-importlib_metadata = {version = "^5.0.0", python = "<3.11"}
+importlib_metadata = {version = "^4.0.0", python = "<3.11"}
 isort = "^5.10"
 pydantic = "^1.10.4"
 tomli = {version = "^2.0.1", python = "<3.11"}
 typing-extensions = {version = "^4.4.0", python = "<3.8"}
+
+rich = {version = "^13.3.2", optional = true}
+textual = {version = "^0.13.0", optional = true}
+
+[tool.poetry.extras]
+tui = ["rich", "textual"]
 
 [tool.poetry.group.nox]
 optional = true
@@ -90,6 +96,7 @@ nox = "^2022.11.21"
 pylint = "^2.15.8"
 pytest = "^7.1.0"
 types-setuptools = "^65.6.0.2"
+textual = {extras = ["dev"], version = "^0.13.0"}
 
 [tool.black]
 target-version = ["py37"]
