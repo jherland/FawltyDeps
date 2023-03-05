@@ -26,12 +26,21 @@ def dirs_between(parent: Path, child: Path) -> Iterator[Path]:
         yield from dirs_between(parent, child.parent)
 
 
+def is_dataclass_instance(instance: object) -> bool:
+    """Return True iff given an _instance_ of a dataclass.
+
+    See https://docs.python.org/3/library/dataclasses.html#dataclasses.is_dataclass
+    for more details.
+    """
+    return is_dataclass(instance) and not isinstance(instance, type)
+
+
 def hide_dataclass_fields(instance: object, *field_names: str) -> None:
     """Make a dataclass field invisible to asdict() and astuple().
 
     This also affects e.g. when serializing this dataclass instance to JSON.
     """
-    if not is_dataclass(instance) or isinstance(instance, type):
+    if not is_dataclass_instance(instance):
         raise TypeError(f"{instance!r} is not a dataclass instance")
     remaining_fields = {
         name: value
