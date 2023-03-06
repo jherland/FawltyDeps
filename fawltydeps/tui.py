@@ -3,13 +3,17 @@
 from dataclasses import fields
 from operator import attrgetter
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel  # pylint: disable=no-name-in-module
 from rich.highlighter import ReprHighlighter
+from rich.syntax import Syntax
 from rich.text import Text
+from rich.traceback import Traceback
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Tree
+from textual.widgets import Footer, Header, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from fawltydeps.main import Analysis
@@ -33,7 +37,7 @@ def render_location(location: Location) -> Text:
 
 
 # pylint: disable=too-many-branches
-def add_node(name: str, node: TreeNode[None], obj: object) -> None:
+def add_node(name: str, node: TreeNode[Optional[Location]], obj: object) -> None:
     """Recursively build TUI representation of Analysis data structure."""
     if name not in {"settings", "imports", "declared_deps", "resolved_deps"}:
         node.expand()
@@ -41,6 +45,7 @@ def add_node(name: str, node: TreeNode[None], obj: object) -> None:
     if isinstance(obj, (ParsedImport, DeclaredDependency)):
         color = "green" if isinstance(obj, ParsedImport) else "blue"
         node.allow_expand = False
+        node.data = obj.source
         node.label = Text.assemble(
             render_location(obj.source),
             Text.from_markup(f": [{color}]{obj.name}[/]"),
@@ -64,6 +69,7 @@ def add_node(name: str, node: TreeNode[None], obj: object) -> None:
         node.label = Text.from_markup(f"[bold {color}]{obj.name}[/]")
         for ref in obj.references:
             child = node.add(render_location(ref))
+            child.data = ref
             child.allow_expand = False
     elif isinstance(obj, BaseModel):  # e.g. Settings
         # TODO: Use TOML formatting to render Settings members
@@ -113,6 +119,12 @@ class FawltyDepsApp(App[None]):
         background: $accent;
         color: $text;
     }
+    #tree-view {
+        width: 50%;
+    }
+    #code-view {
+        width: 50%;
+    }
     """
 
     analysis: reactive[Optional[Analysis]] = reactive(None)
@@ -120,7 +132,15 @@ class FawltyDepsApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
-        yield Tree("FawltyDeps analysis")
+        yield Horizontal(
+            Tree("FawltyDeps analysis", id="tree-view"),
+            # TODO: code-view should dock/slide in from RHS
+            # TODO: Esc to exit/hide code-view
+            Vertical(
+                Static(id="code", expand=False),
+                id="code-view",
+            ),
+        )
 
     def set_analysis(self, analysis: Analysis) -> None:
         """Provide the analysis to be shown."""
@@ -147,6 +167,33 @@ class FawltyDepsApp(App[None]):
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
         self.dark = not self.dark
+
+    def on_tree_node_selected(
+        self, event: Tree.NodeSelected[Optional[Location]]
+    ) -> None:
+        """Called when the user selects a location in the analysis tree."""
+        if event.node.data is None:
+            return
+        event.stop()
+        code_view = self.query_one("#code", Static)
+        path = event.node.data.path
+        theme = "github-dark" if self.dark else "github-light"  # TODO: make reactive?
+        # TODO: Highlight line number
+        try:
+            syntax = Syntax.from_path(
+                str(path),
+                line_numbers=True,
+                word_wrap=False,
+                indent_guides=True,
+                theme=theme,
+            )
+        except Exception:  # pylint: disable=broad-except
+            code_view.update(Traceback(theme=theme, width=None))
+            self.sub_title = "ERROR"
+        else:
+            code_view.update(syntax)
+            self.query_one("#code-view").scroll_home(animate=False)
+            self.sub_title = str(path)
 
 
 if __name__ == "__main__":
