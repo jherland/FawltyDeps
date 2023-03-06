@@ -8,6 +8,7 @@ from pydantic import BaseModel  # pylint: disable=no-name-in-module
 from rich.highlighter import ReprHighlighter
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.reactive import reactive
 from textual.widgets import Footer, Header, Tree
 from textual.widgets.tree import TreeNode
 
@@ -24,20 +25,6 @@ from fawltydeps.types import (
 from fawltydeps.utils import is_dataclass_instance
 
 highlighter = ReprHighlighter()
-
-
-def get_analysis() -> Analysis:
-    """Prepare Analysis object for interactive rendering."""
-    settings = Settings.config(config_file=Path("pyproject.toml"))()
-    analysis = Analysis.create(settings)
-
-    # Sort imports and declared_deps by .source
-    if analysis.imports is not None:
-        analysis.imports.sort(key=attrgetter("source", "name"))
-    if analysis.declared_deps is not None:
-        analysis.declared_deps.sort(key=attrgetter("source", "name"))
-
-    return analysis
 
 
 def render_location(location: Location) -> Text:
@@ -128,19 +115,30 @@ class FawltyDepsApp(App[None]):
     }
     """
 
+    analysis: reactive[Optional[Analysis]] = reactive(None)
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
         yield Tree("FawltyDeps analysis")
+
+    def set_analysis(self, analysis: Analysis) -> None:
+        """Provide the analysis to be shown."""
+        # Sort imports and declared_deps by .source
+        if analysis.imports is not None:
+            analysis.imports.sort(key=attrgetter("source", "name"))
+        if analysis.declared_deps is not None:
+            analysis.declared_deps.sort(key=attrgetter("source", "name"))
+        self.analysis = analysis
 
     def on_mount(self) -> None:
         """Load analysis when the app starts."""
         self.title = "FawltyDeps"
         self.sub_title = "Analysis"
 
-        analysis = get_analysis()
         tree = self.query_one(Tree)
-        add_node("", tree.root, analysis)
+        assert self.analysis is not None
+        add_node("", tree.root, self.analysis)
 
         tree.show_root = False
         tree.root.expand()
@@ -153,4 +151,6 @@ class FawltyDepsApp(App[None]):
 
 if __name__ == "__main__":
     app = FawltyDepsApp()
+    settings = Settings.config(config_file=Path("pyproject.toml"))()
+    app.set_analysis(Analysis.create(settings))
     app.run()

@@ -224,6 +224,18 @@ def main() -> int:
     elif settings.output_format == OutputFormat.HUMAN_SUMMARY:
         analysis.print_human_readable(sys.stdout, details=False)
         print(f"\n{VERBOSE_PROMPT}")
+    elif settings.output_format == OutputFormat.INTERACTIVE:
+        try:
+            # pylint: disable=import-outside-toplevel
+            from fawltydeps.tui import FawltyDepsApp
+
+            app = FawltyDepsApp()
+            app.set_analysis(analysis)
+            app.run()
+        except ImportError:
+            logger.error("Failed to import fawltydeps[tui] dependencies")
+            logger.error("Make sure you have installed 'fawltydeps[tui]'")
+            return 1
     else:
         raise NotImplementedError
 

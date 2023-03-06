@@ -74,6 +74,7 @@ class OutputFormat(OrderedEnum):
     HUMAN_SUMMARY = "human_summary"
     HUMAN_DETAILED = "human_detailed"
     JSON = "json"
+    INTERACTIVE = "interactive"
 
 
 class ParserChoice(Enum):
@@ -284,6 +285,14 @@ def populate_output_formats(parser: argparse._ActionsContainer) -> None:
         action="store_const",
         const="json",
         help="Generate JSON output instead of a human-readable report",
+    )
+    parser.add_argument(
+        "--interactive",
+        "--tui",
+        dest="output_format",
+        action="store_const",
+        const="interactive",
+        help="Browse report interactively in the terminal",
     )
 
 
