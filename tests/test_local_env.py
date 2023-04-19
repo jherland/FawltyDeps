@@ -81,13 +81,13 @@ def test_determine_package_dir__various_paths_in_pypackages(write_tmp_files, sub
 
 def test_local_env__empty_venv__has_no_packages(tmp_path):
     venv.create(tmp_path, with_pip=False)
-    lpl = LocalPackageResolver(tmp_path)
+    lpl = LocalPackageResolver({tmp_path})
     assert lpl.packages == {}
 
 
 def test_local_env__default_venv__contains_pip_and_setuptools(tmp_path):
     venv.create(tmp_path, with_pip=True)
-    lpl = LocalPackageResolver(tmp_path)
+    lpl = LocalPackageResolver({tmp_path})
     # We cannot do a direct comparison, as different Python/pip/setuptools
     # versions differ in exactly which packages are provided. The following
     # is a subset that we can expect across all of our supported versions.
@@ -139,7 +139,7 @@ def test_local_env__prefers_first_package_found_in_sys_path(isolate_default_reso
 def test_resolve_dependencies__in_empty_venv__reverts_to_id_mapping(tmp_path):
     venv.create(tmp_path, with_pip=False)
     id_mapping = IdentityMapping()
-    actual = resolve_dependencies(["pip", "setuptools"], pyenv_path=tmp_path)
+    actual = resolve_dependencies(["pip", "setuptools"], pyenv_paths={tmp_path})
     assert actual == id_mapping.lookup_packages({"pip", "setuptools"})
 
 
@@ -151,7 +151,7 @@ def test_resolve_dependencies__in_fake_venv__returns_local_and_id_deps(fake_venv
             "empty_pkg": set(),
         }
     )
-    actual = resolve_dependencies(["PIP", "pandas", "empty-pkg"], pyenv_path=venv_dir)
+    actual = resolve_dependencies(["PIP", "pandas", "empty-pkg"], pyenv_paths={venv_dir})
     assert actual == {
         "PIP": Package("pip", {f"Python env at {site_packages}": {"pip"}}),
         "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
@@ -167,7 +167,7 @@ def test_on_installed_venv__returns_local_deps(request, monkeypatch):
     monkeypatch.setenv("PIP_FIND_LINKS", str(cache_dir))
 
     actual = resolve_dependencies(
-        ["leftpadx", "click"], pyenv_path=None, install_deps=True
+        ["leftpadx", "click"], pyenv_paths=set(), install_deps=True
     )
     assert actual == {
         "leftpadx": Package("leftpadx", {"Temporarily pip-installed": {"leftpad"}}),

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import AbstractSet, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 # importlib_metadata is gradually graduating into the importlib.metadata stdlib
 # module, however we rely on internal functions and recent (and upcoming)
@@ -181,24 +181,29 @@ class LocalPackageResolver(BasePackageResolver):
 
     def __init__(
         self,
-        pyenv_path: Optional[Path] = None,
+        pyenv_paths: AbstractSet[Path] = frozenset(),
         description_template: str = "Python env at {path}",
     ) -> None:
         """Lookup packages installed in the given virtualenv.
 
-        Default to the current python environment if `pyenv_path` is not given
-        (or None).
+        Default to the current python environment if `pyenv_paths` is empty
+        (the default).
 
         Use importlib_metadata to look up the mapping between packages and their
         provided import names.
         """
         self.description_template = description_template
-        if pyenv_path is not None:
-            self.pyenv_path = self.determine_package_dir(pyenv_path)
-            if self.pyenv_path is None:
-                raise ValueError(f"Could not find a Python env at {pyenv_path}!")
-        else:
-            self.pyenv_path = None
+        self.package_dirs: Set[Path] = set()  # empty => use sys.path instead
+        if pyenv_paths:
+            package_dirs = {
+                (path, self.determine_package_dir(path)) for path in pyenv_paths
+            }
+            for pyenv_path, package_dir in package_dirs:
+                if package_dir is None:
+                    logger.warning(f"Could not find a Python env at {pyenv_path}!")
+            self.package_dirs = {dir for _, dir in package_dirs if dir is not None}
+            if not self.package_dirs:
+                raise ValueError(f"Could not find any Python env in {pyenv_paths}!")
         # We enumerate packages for pyenv_path _once_ and cache the result here:
         self._packages: Optional[Dict[str, Package]] = None
 
@@ -338,7 +343,7 @@ class TemporaryPipInstallResolver(BasePackageResolver):
         logger.info("Installing dependencies into a new temporary Python environment.")
         with self.temp_installed_requirements(sorted(package_names)) as venv_dir:
             description_template = "Temporarily pip-installed"
-            local_resolver = LocalPackageResolver(venv_dir, description_template)
+            local_resolver = LocalPackageResolver({venv_dir}, description_template)
             return local_resolver.lookup_packages(package_names)
 
 
@@ -370,15 +375,13 @@ def resolve_dependencies(
     dep_names: Iterable[str],
     custom_mapping_files: Optional[Set[Path]] = None,
     custom_mapping: Optional[CustomMapping] = None,
-    pyenv_path: Optional[Path] = None,
+    pyenv_paths: Set[Path] = frozenset(),
     install_deps: bool = False,
 ) -> Dict[str, Package]:
     """Associate dependencies with corresponding Package objects.
 
-    Use LocalPackageResolver to find Package objects for each of the given
-    dependencies inside the virtualenv given by 'pyenv_path'. When 'pyenv_path'
-    is None (the default), look for packages in the current Python environment
-    (i.e. equivalent to sys.path).
+    Setup a list of resolvers according to the given settings/arguments, and
+    use these to find Package objects for each of the given dependencies.
 
     Return a dict mapping dependency names to the resolved Package objects.
     """
@@ -395,7 +398,7 @@ def resolve_dependencies(
         )
     )
 
-    resolvers.append(LocalPackageResolver(pyenv_path))
+    resolvers.append(LocalPackageResolver(pyenv_paths))
     if install_deps:
         resolvers += [TemporaryPipInstallResolver()]
     # Identity mapping being at the bottom of the resolvers stack ensures that
