@@ -8,9 +8,8 @@ import venv
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from itertools import chain
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Set
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 # importlib_metadata is gradually graduating into the importlib.metadata stdlib
 # module, however we rely on internal functions and recent (and upcoming)
@@ -102,6 +101,24 @@ class BasePackageResolver(ABC):
         raise NotImplementedError
 
 
+def accumulate_mappings(
+    custom_mappings: Iterable[Tuple[CustomMapping, str]]
+) -> Dict[str, Package]:
+    """Merge CustomMappings (w/associated descriptions) into a dict of Packages.
+
+    Each resulting package object maps a (normalized) package name to a mapping
+    dict where the provided imports are keyed by their associated description.
+    The keys in the returned dict are also normalized package names.
+    """
+    result: Dict[str, Package] = {}
+    for custom_mapping, description in custom_mappings:
+        for name, imports in custom_mapping.items():
+            normalized_name = Package.normalize_name(name)
+            package = result.setdefault(normalized_name, Package(normalized_name))
+            package.add_import_names(*imports, description=description)
+    return result
+
+
 class UserDefinedMapping(BasePackageResolver):
     """Use user-defined mapping loaded from a toml file"""
 
@@ -120,22 +137,6 @@ class UserDefinedMapping(BasePackageResolver):
         # We enumerate packages declared in the mapping _once_ and cache the result here:
         self._packages: Optional[Dict[str, Package]] = None
 
-    @staticmethod
-    def accumulate_mappings(custom_mappings: Iterable[CustomMapping]) -> CustomMapping:
-        """Merge mapping dictionaries and normalise key (package) names."""
-        result: CustomMapping = {}
-        for name, imports in chain.from_iterable(cm.items() for cm in custom_mappings):
-            normalised_name = Package.normalize_name(name)
-            if normalised_name in result:
-                logger.info(
-                    "Mapping for %s already found. Import names "
-                    "from the second mapping are appended to ones "
-                    "found in the first mapping.",
-                    normalised_name,
-                )
-            result.setdefault(normalised_name, []).extend(imports)
-        return result
-
     @property
     @calculated_once
     def packages(self) -> Dict[str, Package]:
@@ -151,26 +152,20 @@ class UserDefinedMapping(BasePackageResolver):
         the remainder of this object's life in _packages.
         """
 
-        def _custom_mappings() -> Iterator[CustomMapping]:
+        def _custom_mappings() -> Iterator[Tuple[CustomMapping, str]]:
             if self.custom_mapping is not None:
                 logger.debug("Applying user-defined mapping from settings.")
-                yield self.custom_mapping
+                yield self.custom_mapping, "User-defined mapping from settings"
 
             if self.mapping_paths is not None:
                 for path in self.mapping_paths:
                     logger.debug(f"Loading user-defined mapping from {path}")
                     with open(path, "rb") as mapping_file:
-                        yield tomllib.load(mapping_file)
+                        yield tomllib.load(
+                            mapping_file
+                        ), f"User-defined mapping from {path}"
 
-        custom_mapping = self.accumulate_mappings(_custom_mappings())
-
-        return {
-            name: Package(
-                name,
-                {"User-defined mapping": set(imports)},
-            )
-            for name, imports in custom_mapping.items()
-        }
+        return accumulate_mappings(_custom_mappings())
 
     def lookup_packages(self, package_names: Set[str]) -> Dict[str, Package]:
         """Convert package names to locally available Package objects."""

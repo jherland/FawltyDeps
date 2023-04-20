@@ -332,7 +332,8 @@ def test_LocalPackageResolver_lookup_packages(
             },
             {
                 "apache_airflow": Package(
-                    "apache_airflow", {"User-defined mapping": {"airflow"}}
+                    "apache_airflow",
+                    {"User-defined mapping from {mapping_toml}": {"airflow"}},
                 ),
                 "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
                 "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
@@ -353,7 +354,8 @@ def test_LocalPackageResolver_lookup_packages(
             {"configuration": {"apache-airflow": ["airflow"]}},
             {
                 "apache_airflow": Package(
-                    "apache_airflow", {"User-defined mapping": {"airflow"}}
+                    "apache_airflow",
+                    {"User-defined mapping from settings": {"airflow"}},
                 ),
                 "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
                 "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
@@ -369,7 +371,10 @@ def test_LocalPackageResolver_lookup_packages(
             {
                 "apache_airflow": Package(
                     "apache_airflow",
-                    {"User-defined mapping": {"airflow", "foo", "bar"}},
+                    {
+                        "User-defined mapping from {mapping_toml}": {"airflow"},
+                        "User-defined mapping from settings": {"foo", "bar"},
+                    },
                 ),
                 "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
                 "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
@@ -391,9 +396,11 @@ def test_resolve_dependencies__focus_on_mappings(
             custom_mapping_files = {custom_mapping_file}
 
     site_packages = isolate_default_resolver(default_sys_path_env_for_tests)
+    mapping_toml = next(iter(custom_mapping_files)) if custom_mapping_files else "N/A"
     expected = expand_package_mappings_placeholders(
         expected,
         site_packages=site_packages,
+        mapping_toml=mapping_toml,
     )
 
     assert (
