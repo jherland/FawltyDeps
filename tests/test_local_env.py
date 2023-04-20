@@ -5,7 +5,6 @@ import venv
 import pytest
 
 from fawltydeps.packages import (
-    DependenciesMapping,
     IdentityMapping,
     LocalPackageResolver,
     Package,
@@ -96,13 +95,14 @@ def test_local_env__default_venv__contains_pip_and_setuptools(tmp_path):
         "pip": {"pip"},
         "setuptools": {"setuptools", "pkg_resources"},
     }
+    package_dir = tmp_path / f"lib/python{major}.{minor}/site-packages"
     for package_name, import_names in expect.items():
         assert package_name in lpl.packages
         p = lpl.packages[package_name]
         assert package_name == p.package_name
         assert len(p.mappings) == 1
-        assert DependenciesMapping.LOCAL_ENV in p.mappings
-        assert import_names.issubset(p.mappings[DependenciesMapping.LOCAL_ENV])
+        assert f"Python env at {package_dir}" in p.mappings
+        assert import_names.issubset(p.mappings[f"Python env at {package_dir}"])
 
 
 def test_local_env__current_venv__contains_prepared_packages(isolate_default_resolver):
@@ -129,7 +129,7 @@ def test_resolve_dependencies__in_empty_venv__reverts_to_id_mapping(tmp_path):
 
 
 def test_resolve_dependencies__in_fake_venv__returns_local_and_id_deps(fake_venv):
-    venv_dir, _ = fake_venv(
+    venv_dir, site_packages = fake_venv(
         {
             "pip": {"pip"},
             "setuptools": {"setuptools", "pkg_resources"},
@@ -138,9 +138,9 @@ def test_resolve_dependencies__in_fake_venv__returns_local_and_id_deps(fake_venv
     )
     actual = resolve_dependencies(["PIP", "pandas", "empty-pkg"], pyenv_path=venv_dir)
     assert actual == {
-        "PIP": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-        "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
-        "empty-pkg": Package("empty_pkg", {DependenciesMapping.LOCAL_ENV: set()}),
+        "PIP": Package("pip", {f"Python env at {site_packages}": {"pip"}}),
+        "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
+        "empty-pkg": Package("empty_pkg", {f"Python env at {site_packages}": set()}),
     }
 
 
@@ -155,6 +155,6 @@ def test_on_installed_venv__returns_local_deps(request, monkeypatch):
         ["leftpadx", "click"], pyenv_path=None, install_deps=True
     )
     assert actual == {
-        "leftpadx": Package("leftpadx", {DependenciesMapping.LOCAL_ENV: {"leftpad"}}),
-        "click": Package("click", {DependenciesMapping.LOCAL_ENV: {"click"}}),
+        "leftpadx": Package("leftpadx", {"Temporarily pip-installed": {"leftpad"}}),
+        "click": Package("click", {"Temporarily pip-installed": {"click"}}),
     }

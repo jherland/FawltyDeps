@@ -3,12 +3,12 @@
 import io
 import logging
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from fawltydeps.main import main
-from fawltydeps.packages import DependenciesMapping, Package
+from fawltydeps.packages import Package
 from fawltydeps.types import (
     DeclaredDependency,
     Location,
@@ -54,11 +54,24 @@ def resolved_factory(*deps: str) -> Dict[str, Package]:
     def make_package(dep: str) -> Package:
         imports = default_sys_path_env_for_tests.get(dep, None)
         if imports is not None:  # exists in local env
-            return Package(dep, {DependenciesMapping.LOCAL_ENV: imports})
+            return Package(dep, {"Python env at {site_packages}": imports})
         # fall back to identity mapping
-        return Package(dep, {DependenciesMapping.IDENTITY: {dep}})
+        return Package(dep, {"Identity mapping": {dep}})
 
     return {dep: make_package(dep) for dep in deps}
+
+
+def expand_package_mappings_placeholders(
+    resolved_deps: Dict[str, Package], **kwargs
+) -> Dict[str, Package]:
+    def expand_one(package: Package) -> Package:
+        mappings = {
+            description.format(**kwargs): imports
+            for description, imports in package.mappings.items()
+        }
+        return replace(package, mappings=mappings)
+
+    return {name: expand_one(package) for name, package in resolved_deps.items()}
 
 
 def undeclared_factory(*deps: str) -> List[UndeclaredDependency]:
@@ -251,8 +264,8 @@ test_vectors = [
             DeclaredDependency(name="pip", source=Location(Path("requirements2.txt"))),
         ],
         expect_resolved_deps={
-            "Pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-            "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
+            "Pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+            "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
         },
         expect_unused_deps=[
             UnusedDependency("Pip", [Location(Path("requirements1.txt"))]),

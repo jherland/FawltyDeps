@@ -8,7 +8,6 @@ import venv
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from enum import Enum
 from itertools import chain
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Set
@@ -37,14 +36,6 @@ else:
 logger = logging.getLogger(__name__)
 
 
-class DependenciesMapping(str, Enum):
-    """Types of dependency and imports mapping"""
-
-    IDENTITY = "identity"
-    LOCAL_ENV = "local_env"
-    USER_DEFINED = "user_defined"
-
-
 @dataclass
 class Package:
     """Encapsulate an installable Python package.
@@ -55,7 +46,7 @@ class Package:
     """
 
     package_name: str
-    mappings: Dict[DependenciesMapping, Set[str]] = field(default_factory=dict)
+    mappings: Dict[str, Set[str]] = field(default_factory=dict)
     import_names: Set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
@@ -79,15 +70,14 @@ class Package:
         """
         return package_name.lower().replace("-", "_")
 
-    def add_import_names(
-        self, *import_names: str, mapping: DependenciesMapping
-    ) -> None:
+    def add_import_names(self, *import_names: str, description: str) -> None:
         """Add import names provided by this package.
 
-        Import names must be associated with a DependenciesMapping enum value,
-        as keeping track of this is extremely helpful when debugging.
+        Import names must be associated with a description that provides some
+        details about its source (keeping track of this is extremely helpful
+        when debugging).
         """
-        self.mappings.setdefault(mapping, set()).update(import_names)
+        self.mappings.setdefault(description, set()).update(import_names)
         self.import_names.update(import_names)
 
     def is_used(self, imported_names: Iterable[str]) -> bool:
@@ -177,7 +167,7 @@ class UserDefinedMapping(BasePackageResolver):
         return {
             name: Package(
                 name,
-                {DependenciesMapping.USER_DEFINED: set(imports)},
+                {"User-defined mapping": set(imports)},
             )
             for name, imports in custom_mapping.items()
         }
@@ -194,7 +184,11 @@ class UserDefinedMapping(BasePackageResolver):
 class LocalPackageResolver(BasePackageResolver):
     """Lookup imports exposed by packages installed in a Python environment."""
 
-    def __init__(self, pyenv_path: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        pyenv_path: Optional[Path] = None,
+        description_template: str = "Python env at {path}",
+    ) -> None:
         """Lookup packages installed in the given virtualenv.
 
         Default to the current python environment if `pyenv_path` is not given
@@ -203,6 +197,7 @@ class LocalPackageResolver(BasePackageResolver):
         Use importlib_metadata to look up the mapping between packages and their
         provided import names.
         """
+        self.description_template = description_template
         if pyenv_path is not None:
             self.pyenv_path = self.determine_package_dir(pyenv_path)
             if self.pyenv_path is None:
@@ -272,7 +267,8 @@ class LocalPackageResolver(BasePackageResolver):
                 _top_level_declared(dist)  # type: ignore
                 or _top_level_inferred(dist)  # type: ignore
             )
-            package = Package(dist.name, {DependenciesMapping.LOCAL_ENV: imports})
+            description = self.description_template.format(path=parent_dir)
+            package = Package(dist.name, {description: imports})
             ret[Package.normalize_name(dist.name)] = package
 
         return ret
@@ -338,7 +334,8 @@ class TemporaryPipInstallResolver(BasePackageResolver):
         """
         logger.info("Installing dependencies into a new temporary Python environment.")
         with self.temp_installed_requirements(sorted(package_names)) as venv_dir:
-            local_resolver = LocalPackageResolver(venv_dir)
+            description_template = "Temporarily pip-installed"
+            local_resolver = LocalPackageResolver(venv_dir, description_template)
             return local_resolver.lookup_packages(package_names)
 
 
@@ -354,7 +351,7 @@ class IdentityMapping(BasePackageResolver):
         """Convert a package name into a Package with the same import name."""
         ret = Package(package_name)
         import_name = Package.normalize_name(package_name)
-        ret.add_import_names(import_name, mapping=DependenciesMapping.IDENTITY)
+        ret.add_import_names(import_name, description="Identity mapping")
         logger.info(
             f"{package_name!r} was not resolved. "
             f"Assuming it can be imported as {import_name!r}."

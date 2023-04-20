@@ -6,7 +6,6 @@ from textwrap import dedent
 import pytest
 
 from fawltydeps.packages import (
-    DependenciesMapping,
     IdentityMapping,
     LocalPackageResolver,
     Package,
@@ -15,7 +14,12 @@ from fawltydeps.packages import (
 )
 from fawltydeps.types import UnparseablePathException
 
-from .utils import SAMPLE_PROJECTS_DIR, default_sys_path_env_for_tests, test_vectors
+from .utils import (
+    SAMPLE_PROJECTS_DIR,
+    default_sys_path_env_for_tests,
+    expand_package_mappings_placeholders,
+    test_vectors,
+)
 
 
 def test_package__empty_package__matches_nothing():
@@ -121,7 +125,7 @@ def test_package__local_env_mapping(
     package_name, import_names, matching_imports, non_matching_imports
 ):
     p = Package(package_name)
-    p.add_import_names(*import_names, mapping=DependenciesMapping.LOCAL_ENV)
+    p.add_import_names(*import_names, description="Python env at /some/path")
     assert p.package_name == package_name  # package name is not normalized
     assert p.is_used(matching_imports)
     assert not p.is_used(non_matching_imports)
@@ -131,7 +135,7 @@ def test_package__both_mappings():
     id_mapping = IdentityMapping()
     p = id_mapping.lookup_package("FooBar")
     import_names = ["foo", "bar", "baz"]
-    p.add_import_names(*import_names, mapping=DependenciesMapping.LOCAL_ENV)
+    p.add_import_names(*import_names, description="Python env at /some/path")
     assert p.package_name == "FooBar"  # package name is not normalized
     assert p.is_used(["foobar"])  # but identity-mapped import name _is_.
     assert p.is_used(["foo"])
@@ -140,8 +144,8 @@ def test_package__both_mappings():
     assert not p.is_used(["fooba"])
     assert not p.is_used(["foobarbaz"])
     assert p.mappings == {
-        DependenciesMapping.IDENTITY: {"foobar"},
-        DependenciesMapping.LOCAL_ENV: {"foo", "bar", "baz"},
+        "Identity mapping": {"foobar"},
+        "Python env at /some/path": {"foo", "bar", "baz"},
     }
     assert p.import_names == {"foobar", "foo", "bar", "baz"}
 
@@ -285,9 +289,9 @@ def test_LocalPackageResolver_lookup_packages(
             ["pandas", "numpy", "other"],
             None,
             {
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
-                "numpy": Package("numpy", {DependenciesMapping.IDENTITY: {"numpy"}}),
-                "other": Package("other", {DependenciesMapping.IDENTITY: {"other"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
+                "numpy": Package("numpy", {"Identity mapping": {"numpy"}}),
+                "other": Package("other", {"Identity mapping": {"other"}}),
             },
             id="uninstalled_deps__use_identity_mapping",
         ),
@@ -298,15 +302,15 @@ def test_LocalPackageResolver_lookup_packages(
                 "setuptools": Package(
                     "setuptools",
                     {
-                        DependenciesMapping.LOCAL_ENV: {
+                        "Python env at {site_packages}": {
                             "_distutils_hack",
                             "pkg_resources",
                             "setuptools",
                         }
                     },
                 ),
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "isort": Package("isort", {DependenciesMapping.LOCAL_ENV: {"isort"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "isort": Package("isort", {"Python env at {site_packages}": {"isort"}}),
             },
             id="installed_deps__use_local_env_mapping",
         ),
@@ -314,8 +318,8 @@ def test_LocalPackageResolver_lookup_packages(
             ["pandas", "pip"],
             None,
             {
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
             },
             id="mixed_deps__uses_mixture_of_identity_and_local_env_mapping",
         ),
@@ -328,10 +332,10 @@ def test_LocalPackageResolver_lookup_packages(
             },
             {
                 "apache_airflow": Package(
-                    "apache_airflow", {DependenciesMapping.USER_DEFINED: {"airflow"}}
+                    "apache_airflow", {"User-defined mapping": {"airflow"}}
                 ),
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
             },
             id="mixed_deps__uses_mixture_of_user_defined_from_file_identity_and_local_env_mapping",
         ),
@@ -339,8 +343,8 @@ def test_LocalPackageResolver_lookup_packages(
             ["pandas", "pip"],
             {"file": dedent("""apache-airflow = ["airflow"]""")},
             {
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
             },
             id="mixed_deps__unaffected_by_nonmatching_user_defined_mapping",
         ),
@@ -349,10 +353,10 @@ def test_LocalPackageResolver_lookup_packages(
             {"configuration": {"apache-airflow": ["airflow"]}},
             {
                 "apache_airflow": Package(
-                    "apache_airflow", {DependenciesMapping.USER_DEFINED: {"airflow"}}
+                    "apache_airflow", {"User-defined mapping": {"airflow"}}
                 ),
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
             },
             id="mixed_deps__user_defined_from_config_identity_and_local_env_mapping",
         ),
@@ -365,10 +369,10 @@ def test_LocalPackageResolver_lookup_packages(
             {
                 "apache_airflow": Package(
                     "apache_airflow",
-                    {DependenciesMapping.USER_DEFINED: {"airflow", "foo", "bar"}},
+                    {"User-defined mapping": {"airflow", "foo", "bar"}},
                 ),
-                "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-                "pandas": Package("pandas", {DependenciesMapping.IDENTITY: {"pandas"}}),
+                "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+                "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
             },
             id="mixed_deps__uses_mixture_of_user_defined_identity_and_local_env_mapping",
         ),
@@ -386,7 +390,11 @@ def test_resolve_dependencies__focus_on_mappings(
             custom_mapping_file.write_text(dedent(user_mapping["file"]))
             custom_mapping_files = {custom_mapping_file}
 
-    isolate_default_resolver(default_sys_path_env_for_tests)
+    site_packages = isolate_default_resolver(default_sys_path_env_for_tests)
+    expected = expand_package_mappings_placeholders(
+        expected,
+        site_packages=site_packages,
+    )
 
     assert (
         resolve_dependencies(
@@ -401,19 +409,26 @@ def test_resolve_dependencies__focus_on_mappings(
 @pytest.mark.parametrize("vector", [pytest.param(v, id=v.id) for v in test_vectors])
 def test_resolve_dependencies(vector, isolate_default_resolver):
     dep_names = [dd.name for dd in vector.declared_deps]
-    isolate_default_resolver(default_sys_path_env_for_tests)
-    assert resolve_dependencies(dep_names) == vector.expect_resolved_deps
+    site_packages = isolate_default_resolver(default_sys_path_env_for_tests)
+    expected = expand_package_mappings_placeholders(
+        vector.expect_resolved_deps,
+        site_packages=site_packages,
+    )
+    assert resolve_dependencies(dep_names) == expected
 
 
 def test_resolve_dependencies__informs_once_when_id_mapping_is_used(
     caplog, isolate_default_resolver
 ):
     dep_names = ["some-foo", "pip", "some-foo"]
-    isolate_default_resolver(default_sys_path_env_for_tests)
-    expect = {
-        "pip": Package("pip", {DependenciesMapping.LOCAL_ENV: {"pip"}}),
-        "some-foo": Package("some-foo", {DependenciesMapping.IDENTITY: {"some_foo"}}),
-    }
+    site_packages = isolate_default_resolver(default_sys_path_env_for_tests)
+    expect = expand_package_mappings_placeholders(
+        {
+            "pip": Package("pip", {"Python env at {site_packages}": {"pip"}}),
+            "some-foo": Package("some-foo", {"Identity mapping": {"some_foo"}}),
+        },
+        site_packages=site_packages,
+    )
     expect_log = [
         (
             "fawltydeps.packages",
