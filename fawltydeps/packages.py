@@ -261,6 +261,14 @@ class LocalPackageResolver(BasePackageResolver):
         # that map to zero import names.
         context = DistributionFinder.Context(path=paths)  # type: ignore
         for dist in MetadataPathFinder().find_distributions(context):  # type: ignore
+            normalized_name = Package.normalize_name(dist.name)
+            if normalized_name in ret:
+                # We already found another instance of this package earlier in
+                # the given paths. Assume that the earlier package is what
+                # Python's import machinery will choose, and that this later
+                # package is not interesting
+                continue
+
             parent_dir = dist.locate_file("")
             logger.debug(f"Found {dist.name} {dist.version} under {parent_dir}")
             imports = set(
@@ -269,7 +277,7 @@ class LocalPackageResolver(BasePackageResolver):
             )
             description = self.description_template.format(path=parent_dir)
             package = Package(dist.name, {description: imports})
-            ret[Package.normalize_name(dist.name)] = package
+            ret[normalized_name] = package
 
         return ret
 
