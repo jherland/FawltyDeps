@@ -241,14 +241,19 @@ class LocalPackageResolver(BasePackageResolver):
     def _from_one_env(
         self, env_paths: List[str]
     ) -> Iterator[Tuple[CustomMapping, str]]:
-        """Return package-name-to-import-names mapping from one Python env."""
+        """Return package-name-to-import-names mapping from one Python env.
+
+        This is roughly equivalent to calling importlib_metadata's
+        packages_distributions(), except that instead of implicitly querying
+        sys.path, we query env_paths instead.
+
+        Also, we are able to return packages that map to zero import names,
+        whereas packages_distributions() cannot.
+        """
         seen = set()  # Package names (normalized) seen earlier in env_paths
 
-        # We're reaching into the internals of importlib_metadata here,
-        # which Mypy is not overly fond of. Roughly what we're doing here
-        # is calling packages_distributions(), but on env_paths (instead of
-        # sys.path). Also, packages_distributions() is not able to return
-        # packages that map to zero import names, but we can do so here.
+        # We're reaching into the internals of importlib_metadata here, which
+        # Mypy is not overly fond of, hence lots of "type: ignore"...
         context = DistributionFinder.Context(path=env_paths)  # type: ignore
         for dist in MetadataPathFinder().find_distributions(context):  # type: ignore
             normalized_name = Package.normalize_name(dist.name)
@@ -263,7 +268,7 @@ class LocalPackageResolver(BasePackageResolver):
 
             logger.debug(f"Found {dist.name} {dist.version} under {parent_dir}")
             seen.add(normalized_name)
-            imports = set(
+            imports = list(
                 _top_level_declared(dist)  # type: ignore
                 or _top_level_inferred(dist)  # type: ignore
             )
