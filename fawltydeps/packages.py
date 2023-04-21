@@ -383,7 +383,7 @@ def resolve_dependencies(
     dep_names: Iterable[str],
     custom_mapping_files: Optional[Set[Path]] = None,
     custom_mapping: Optional[CustomMapping] = None,
-    pyenv_paths: Set[Path] = frozenset(),
+    pyenv_paths: AbstractSet[Path] = frozenset(),
     install_deps: bool = False,
 ) -> Dict[str, Package]:
     """Associate dependencies with corresponding Package objects.
