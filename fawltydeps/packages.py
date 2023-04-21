@@ -238,6 +238,38 @@ class LocalPackageResolver(BasePackageResolver):
         # Try again with parent directory
         return None if path.parent == path else cls.determine_package_dir(path.parent)
 
+    def _from_one_env(
+        self, env_paths: List[str]
+    ) -> Iterator[Tuple[CustomMapping, str]]:
+        """Return package-name-to-import-names mapping from one Python env."""
+        seen = set()  # Package names (normalized) seen earlier in env_paths
+
+        # We're reaching into the internals of importlib_metadata here,
+        # which Mypy is not overly fond of. Roughly what we're doing here
+        # is calling packages_distributions(), but on env_paths (instead of
+        # sys.path). Also, packages_distributions() is not able to return
+        # packages that map to zero import names, but we can do so here.
+        context = DistributionFinder.Context(path=env_paths)  # type: ignore
+        for dist in MetadataPathFinder().find_distributions(context):  # type: ignore
+            normalized_name = Package.normalize_name(dist.name)
+            parent_dir = dist.locate_file("")
+            if normalized_name in seen:
+                # We already found another instance of this package earlier in
+                # env_paths. Assume that the earlier package is what Python's
+                # import machinery will choose, and that this later package is
+                # not interesting.
+                logger.debug(f"Skip {dist.name} {dist.version} under {parent_dir}")
+                continue
+
+            logger.debug(f"Found {dist.name} {dist.version} under {parent_dir}")
+            seen.add(normalized_name)
+            imports = set(
+                _top_level_declared(dist)  # type: ignore
+                or _top_level_inferred(dist)  # type: ignore
+            )
+            description = self.description_template.format(path=parent_dir)
+            yield {dist.name: imports}, description
+
     @property
     @calculated_once
     def packages(self) -> Dict[str, Package]:
@@ -247,40 +279,15 @@ class LocalPackageResolver(BasePackageResolver):
         (or the current Python environment) _once_, and caches the result for
         the remainder of this object's life.
         """
-        if self.pyenv_path is None:
-            paths = sys.path  # use current Python environment
-        else:
-            paths = [str(self.pyenv_path)]
 
-        ret = {}
-        # We're reaching into the internals of importlib_metadata here,
-        # which Mypy is not overly fond of. Roughly what we're doing here
-        # is calling packages_distributions(), but on a possibly different
-        # environment than the current one (i.e. sys.path).
-        # Note that packages_distributions() is not able to return packages
-        # that map to zero import names.
-        context = DistributionFinder.Context(path=paths)  # type: ignore
-        for dist in MetadataPathFinder().find_distributions(context):  # type: ignore
-            normalized_name = Package.normalize_name(dist.name)
-            parent_dir = dist.locate_file("")
-            if normalized_name in ret:
-                # We already found another instance of this package earlier in
-                # the given paths. Assume that the earlier package is what
-                # Python's import machinery will choose, and that this later
-                # package is not interesting
-                logger.debug(f"Skip {dist.name} {dist.version} under {parent_dir}")
-                continue
+        def _pyenvs() -> Iterator[Tuple[CustomMapping, str]]:
+            if not self.package_dirs:  # No pyenvs given, fall back to sys.path
+                yield from self._from_one_env(sys.path)
+            else:
+                for package_dir in self.package_dirs:
+                    yield from self._from_one_env([str(package_dir)])
 
-            logger.debug(f"Found {dist.name} {dist.version} under {parent_dir}")
-            imports = set(
-                _top_level_declared(dist)  # type: ignore
-                or _top_level_inferred(dist)  # type: ignore
-            )
-            description = self.description_template.format(path=parent_dir)
-            package = Package(dist.name, {description: imports})
-            ret[normalized_name] = package
-
-        return ret
+        return accumulate_mappings(_pyenvs())
 
     def lookup_packages(self, package_names: Set[str]) -> Dict[str, Package]:
         """Convert package names to locally available Package objects.
