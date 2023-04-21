@@ -136,6 +136,12 @@ def test_local_env__prefers_first_package_found_in_sys_path(isolate_default_reso
     }
 
 
+# TODO: Test multiple pyenvs passed to LocalPackageResolver!
+# Rebase into two commits:
+#  1. Introduce core logic in LocalPackageResolver + tests
+#  2. Introduce CLI interface + docs + etc.
+
+
 def test_resolve_dependencies__in_empty_venv__reverts_to_id_mapping(tmp_path):
     venv.create(tmp_path, with_pip=False)
     id_mapping = IdentityMapping()
