@@ -151,7 +151,9 @@ def test_resolve_dependencies__in_fake_venv__returns_local_and_id_deps(fake_venv
             "empty_pkg": set(),
         }
     )
-    actual = resolve_dependencies(["PIP", "pandas", "empty-pkg"], pyenv_paths={venv_dir})
+    actual = resolve_dependencies(
+        ["PIP", "pandas", "empty-pkg"], pyenv_paths={venv_dir}
+    )
     assert actual == {
         "PIP": Package("pip", {f"Python env at {site_packages}": {"pip"}}),
         "pandas": Package("pandas", {"Identity mapping": {"pandas"}}),
