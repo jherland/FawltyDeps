@@ -15,7 +15,7 @@ from fawltydeps.packages import (
 )
 
 # The deps in each category should be disjoint
-other_deps = {"leftpadx": ["leftpad"]}
+other_deps = {"leftpadx": ["leftpad"], "SQLObject": ["sqlobject"]}
 locally_installed_deps = {
     "setuptools": [
         "_distutils_hack",
@@ -118,7 +118,10 @@ def generate_expected_resolved_deps(
         else:
             ret.update(
                 {
-                    dep: Package(dep, {DependenciesMapping.IDENTITY: {dep}})
+                    dep: Package(
+                        dep,
+                        {DependenciesMapping.IDENTITY: {Package.normalize_name(dep)}},
+                    )
                     for dep in other_deps
                 }
             )
