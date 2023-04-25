@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 from fawltydeps.packages import (
     DependenciesMapping,
     Package,
+    TemporaryPipInstallResolver,
     UserDefinedMapping,
     resolve_dependencies,
 )
@@ -145,11 +146,7 @@ def generate_expected_resolved_deps(
     max_examples=50,
 )
 def test_resolve_dependencies__generates_expected_mappings(
-    installed_deps,
-    other_deps,
-    user_mapping,
-    tmp_path,
-    install_deps,
+    installed_deps, other_deps, user_mapping, tmp_path, install_deps, request, mocker
 ):
 
     user_deps, user_file_mapping, user_config_mapping = user_mapping
@@ -185,6 +182,14 @@ def test_resolve_dependencies__generates_expected_mappings(
         locally_installed_deps=installed_deps,
         other_deps=other_deps,
         install_deps=install_deps,
+    )
+
+    # patch TemporaryPipInstallResolver so that it's called with the cache
+    # option in the resolver
+    tmp_pip_install_resolver = TemporaryPipInstallResolver(cache=request.config.cache)
+    mocker.patch(
+        "fawltydeps.packages.TemporaryPipInstallResolver",
+        return_value=tmp_pip_install_resolver,
     )
 
     obtained = resolve_dependencies(
