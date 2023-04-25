@@ -1,5 +1,6 @@
 """Verify behavior of packages resolver"""
 
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -146,7 +147,7 @@ def generate_expected_resolved_deps(
     max_examples=50,
 )
 def test_resolve_dependencies__generates_expected_mappings(
-    installed_deps, other_deps, user_mapping, tmp_path, install_deps, request, mocker
+    installed_deps, other_deps, user_mapping, tmp_path, install_deps, request
 ):
 
     user_deps, user_file_mapping, user_config_mapping = user_mapping
@@ -184,21 +185,25 @@ def test_resolve_dependencies__generates_expected_mappings(
         install_deps=install_deps,
     )
 
-    # patch TemporaryPipInstallResolver so that it's called with the cache
-    # option in the resolver
-    tmp_pip_install_resolver = TemporaryPipInstallResolver(cache=request.config.cache)
-    mocker.patch(
-        "fawltydeps.packages.TemporaryPipInstallResolver",
-        return_value=tmp_pip_install_resolver,
+    # Tell TemporaryPipInstallResolver to reuse our cached venv, instead of
+    # potentially creating a new venv for every test case.
+    cached_venv = Path(
+        request.config.cache.mkdir(
+            f"fawltydeps_reused_venv_{sys.version_info.major}.{sys.version_info.minor}"
+        )
     )
+    try:
+        TemporaryPipInstallResolver.cached_venv = cached_venv
 
-    obtained = resolve_dependencies(
-        dep_names,
-        custom_mapping_files=set([custom_mapping_file])
-        if custom_mapping_file
-        else None,
-        custom_mapping=user_config_mapping,
-        install_deps=install_deps,
-    )
+        obtained = resolve_dependencies(
+            dep_names,
+            custom_mapping_files=set([custom_mapping_file])
+            if custom_mapping_file
+            else None,
+            custom_mapping=user_config_mapping,
+            install_deps=install_deps,
+        )
+    finally:
+        TemporaryPipInstallResolver.cached_venv = None
 
     assert obtained == expected
