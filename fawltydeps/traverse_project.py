@@ -1,7 +1,9 @@
 """Traverse a project to identify appropriate inputs to FawltyDeps."""
 import logging
 from pathlib import Path
-from typing import AbstractSet, Iterator, Optional, Set, Type, Union
+from typing import AbstractSet, Callable, Iterator, List, Optional, Set, Type, Union
+
+from gitignore_parser import IgnoreRule, handle_negation, rule_from_pattern
 
 from fawltydeps.extract_declared_dependencies import validate_deps_source
 from fawltydeps.extract_imports import validate_code_source
@@ -17,6 +19,30 @@ from fawltydeps.types import (
 from fawltydeps.utils import DirectoryTraversal
 
 logger = logging.getLogger(__name__)
+
+
+def ignore_rules(settings: Settings, basedir: Path) -> Iterator[IgnoreRule]:
+    for ignore_pattern in settings.ignores:
+        rule = rule_from_pattern(ignore_pattern, basedir)
+        if rule is None:
+            logger.warning(f"Unable to parse ignore pattern {ignore_pattern!r}")
+        else:
+            yield rule
+
+
+def build_ignore_matcher(settings: Settings, basedir: Path) -> Callable[[Path], bool]:
+    rules = list(ignore_rules(settings, basedir))
+    if not any(r.negation for r in rules):
+        return lambda file_path: any(r.match(file_path) for r in rules)
+    else:
+        # We have negation rules. We can't use a simple "any" to evaluate them.
+        # Later rules override earlier rules.
+        return lambda file_path: handle_negation(file_path, rules)
+
+
+# def matches_ignore_pattern(settings: Settings, path: Path, is_dir: bool) -> bool:
+#     rules: List[IgnoreRule] = list(ignore_rules(settings))
+#     return is_dir and path.name.startswith(".")
 
 
 def find_sources(  # pylint: disable=too-many-branches,too-many-statements
@@ -53,6 +79,7 @@ def find_sources(  # pylint: disable=too-many-branches,too-many-statements
     logger.debug(f"    pyenvs: {settings.pyenvs}")
 
     traversal: DirectoryTraversal[Union[Type[Source], Path]] = DirectoryTraversal()
+    matches_ignore = build_ignore_matcher(settings, Path.cwd())
 
     for path_or_special in settings.code if CodeSource in source_types else []:
         # exceptions raised by validate_code_source() are propagated here
@@ -89,7 +116,7 @@ def find_sources(  # pylint: disable=too-many-branches,too-many-statements
 
     for _cur_dir, subdirs, files, extras in traversal.traverse():
         for subdir in subdirs:  # don't recurse into dot dirs
-            if subdir.name.startswith("."):
+            if matches_ignore(_cur_dir / subdir):
                 traversal.ignore(subdir)
 
         types = {t for t in extras if t in source_types}
