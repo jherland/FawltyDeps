@@ -230,6 +230,17 @@ docs = ["furo (>=2022.12.7)", "sphinx (>=5.3)", "sphinx-autodoc-typehints (>=1.1
 testing = ["covdefaults (>=2.2.2)", "coverage (>=7.0.1)", "pytest (>=7.2)", "pytest-cov (>=4)", "pytest-timeout (>=2.1)"]
 
 [[package]]
+name = "gitignore-parser"
+version = "0.1.6"
+description = "A spec-compliant gitignore parser for Python 3.5+"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "gitignore_parser-0.1.6.tar.gz", hash = "sha256:8962420f7abb02cc9bb17461b37504eaa2342775408de6e5375f9c8a6c662fa7"},
+]
+
+[[package]]
 name = "hypothesis"
 version = "6.68.2"
 description = "A library for property-based testing"
@@ -1004,4 +1015,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.2"
-content-hash = "61619347a6be652532e9042f9c2370fe55b270bc3fc1197b0334ad4d82396c8d"
+content-hash = "f7f86e550e72c9f3dbec22f8d50a06e9a4f34e98baf42b6a7e261ce613a0f1c5"
