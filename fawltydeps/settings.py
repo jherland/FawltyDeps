@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     ignore_unused: Set[str] = set()
     deps_parser_choice: Optional[ParserChoice] = None
     install_deps: bool = False
+    ignores: Set[str] = {".**"}
     verbosity: int = 0
     custom_mapping_file: Set[Path] = set()
 
